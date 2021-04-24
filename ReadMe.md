@@ -6,6 +6,7 @@ in the same evening, but 4 hours later (over the course of 3 days) my self-impos
 # Requirements
 
 For hardware requirements check www.github.com/Cryru/Emotion
+
 Compilation requires the .NET 5 SDK
 
 # How to play
@@ -13,9 +14,11 @@ Compilation requires the .NET 5 SDK
 Compile a "server" and "client" version of the executable. Solution configurations are prepared for both.
 You might want to use a self-contained published .net executable to ensure compatibility.
 
+
 Include a "ip.txt" file in the same folder as the ".exe" containing nothing but your ip address. Ensure there's no BOM.
 Distribute the "client" exe to whomever you want to play with. Launch the server exe and wait for the other player to launch the client.
 You might need to port forward the game's port on your router. The default port is 9090 and the configuration is located in "Program.cs".
+
 
 Move the paddles with W/S and play. There is no score limit.
 
