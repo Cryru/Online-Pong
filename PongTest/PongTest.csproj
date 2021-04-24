@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net5.0</TargetFramework>
+    <Configurations>Debug;Release;Debug-Client;Release-Client</Configurations>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug-Client|AnyCPU'">
+    <DefineConstants>TRACE;DEBUG;CLIENT, PONG</DefineConstants>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <DefineConstants>TRACE;PONG</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release-Client|AnyCPU'">
+    <DefineConstants>TRACE;CLIENT</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Emotion" Version="1.0.432" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Assets\calibrib.ttf">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
