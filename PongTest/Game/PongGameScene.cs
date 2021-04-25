@@ -3,6 +3,7 @@
 using System;
 using System.Numerics;
 using Emotion.Common;
+using Emotion.Game;
 using Emotion.Game.Text;
 using Emotion.Game.Time;
 using Emotion.Graphics;
@@ -31,6 +32,7 @@ namespace PongTest.Game
         private Vector3 _pad1StartingPos;
         private Vector3 _pad2StartingPos;
         private Vector3 _ballStartingPos;
+        private PongCollisionProvider _collisionSystem;
 
         public override void LoadServer(NetSceneDeltaState deltaScene)
         {
@@ -39,15 +41,16 @@ namespace PongTest.Game
             var defaultPaddleSize = new Vector2(18, 70);
             Vector2 worldSize = Engine.Configuration.RenderSize;
 
-            NetworkPlayer p1 = ServerGame.Players[0];
-            NetworkPlayer p2 = ServerGame.Players[1];
+            NetworkPlayer p1 = ServerGame?.Players[0];
+            NetworkPlayer p2 = ServerGame?.Players[1];
 
             _pad1StartingPos = new Vector3(startOffset, worldSize.Y / 2 - defaultPaddleSize.Y / 2, 0);
             _pad1 = new PongPaddle("PaddleOne")
             {
                 Position = _pad1StartingPos,
                 Size = defaultPaddleSize,
-                Owner = new NetworkPlayerHandle(p1.Id),
+                Owner = new NetworkPlayerHandle(p1?.Id),
+                Ready = true,
             };
             AddObject(_pad1);
 
@@ -56,7 +59,8 @@ namespace PongTest.Game
             {
                 Position = _pad2StartingPos,
                 Size = defaultPaddleSize,
-                Owner = new NetworkPlayerHandle(p2.Id),
+                Owner = new NetworkPlayerHandle(p2?.Id),
+                Ready = true
             };
             AddObject(_pad2);
 
@@ -84,6 +88,8 @@ namespace PongTest.Game
             _betweenMatchTimer = new After(250);
             _betweenMatchTimer.End();
 
+            _collisionSystem = new PongCollisionProvider(this);
+
             base.LoadServer(deltaScene);
         }
 
@@ -109,66 +115,6 @@ namespace PongTest.Game
             deltaState[IdToObject["LowerWall"]] = NetworkTransformReadOperation.Skip;
         }
 
-        private Vector3 CollideWithTransform(ref Rectangle ballBound, ref Vector3 vel, Transform obj)
-        {
-            Rectangle objBound = obj.Bounds;
-            if (!ballBound.Intersects(objBound)) return Vector3.Zero;
-
-            LineSegment[] segments;
-            if (obj is PongPaddle pd)
-                segments = pd.GetPaddleCollision();
-            else
-                segments = objBound.GetLineSegments();
-
-            float segmentBestWeight = 0;
-            ref LineSegment bestSegment = ref segments[0];
-
-            LineSegment[] ballSegments = ballBound.GetLineSegments();
-
-            for (var s = 0; s < segments.Length; s++)
-            {
-                ref LineSegment segment = ref segments[s];
-                if (segment.GetIntersectionPoint(ref ballBound) == Vector2.Zero) continue;
-
-                // Project ball onto the segment to calculate overlap.
-                Vector2 lineVector = Vector2.Normalize(segment.Start - segment.End);
-                float surfaceOverlapS = Vector2.Dot(lineVector, segment.Start);
-                float surfaceOverlapE = Vector2.Dot(lineVector, segment.End);
-
-                float maxSurface = MathF.Max(surfaceOverlapS, surfaceOverlapE);
-                float minSurface = MathF.Min(surfaceOverlapS, surfaceOverlapE);
-
-                var max = float.MinValue;
-                var min = float.MaxValue;
-                for (var i = 0; i < ballSegments.Length; i++)
-                {
-                    float overlapS = Vector2.Dot(lineVector, ballSegments[i].Start);
-                    float overlapE = Vector2.Dot(lineVector, ballSegments[i].End);
-                    max = MathF.Max(overlapS, max);
-                    max = MathF.Max(overlapE, max);
-
-                    min = MathF.Min(overlapS, min);
-                    min = MathF.Min(overlapE, min);
-                }
-
-                float overlap = Maths.Get1DIntersectionDepth(min, max, minSurface, maxSurface);
-
-                if (!(overlap > segmentBestWeight)) continue;
-                segmentBestWeight = overlap;
-                bestSegment = ref segment;
-            }
-
-            // Reflect only off of the segment with the most overlap in the colliding object.
-            if (segmentBestWeight == 0) return Vector3.Zero;
-            // Find normal of segment.
-            bool? leftOf = bestSegment.IsPointLeftOf(ballBound.Center);
-            if (leftOf == null) return Vector3.Zero;
-            Vector2 normal = bestSegment.GetNormal(!leftOf.Value);
-
-            Vector2 v = vel.ToVec2();
-            return ((2 * Vector2.Dot(v, normal) * normal - v) * -1).ToVec3(); // Equivalent to Vector3.Reflect
-        }
-
         public override void UpdateServer(float delta, NetSceneDeltaState deltaState)
         {
             base.UpdateServer(delta, deltaState);
@@ -181,30 +127,37 @@ namespace PongTest.Game
             var ball = (PongBall) IdToObject["Ball"];
             deltaState[ball] = NetworkTransformReadOperation.Update;
             if (ball.Velocity == Vector3.Zero) ball.Velocity = Vector3.Normalize(new Vector3(_p1Turn ? -1 : 1, Helpers.GenerateRandomNumber(-30, 30) / 100.0f, 0));
-            // Move ball.
-            Rectangle ballBound = ball.Bounds;
-            ballBound.X += ball.Velocity.X * _ballSpeed * delta;
-            ballBound.Y += ball.Velocity.Y * _ballSpeed * delta;
 
-            // Resolve collision
-            Vector3 ballVelocity = ball.Velocity;
-            for (var i = 0; i < SyncedObjects.Count; i++)
+            // Since the paddles essentially teleport around (when data is received from a client) it is possible
+            // for the ball to end up inside one of them. The collision system cannot resolve cases like this, so
+            // we have to manually snap the ball towards the smaller overlap.
+            Rectangle ballBound = ball.Bounds;
+            var collidingPadBound = new Rectangle(0, 0, 0, 0);
+            Rectangle pad1Bound = _pad1.Bounds;
+            Rectangle pad2Bound = _pad2.Bounds;
+            if (ballBound.Intersects(pad1Bound))
+                collidingPadBound = pad1Bound;
+            else if (ballBound.Intersects(pad2Bound)) collidingPadBound = pad2Bound;
+            if (collidingPadBound.Size != Vector2.Zero)
             {
-                NetworkTransform obj = SyncedObjects[i];
-                if (obj == ball) continue;
-                Vector3 newVel = CollideWithTransform(ref ballBound, ref ballVelocity, obj);
-                if (newVel == Vector3.Zero) continue;
-                ballBound = ball.Bounds;
-                if (obj is PongPaddle) _ballSpeed = MathF.Min(_ballSpeed + 0.05f, 0.8f);
-                ball.Velocity = newVel;
-                ballBound.X += ball.Velocity.X * _ballSpeed * delta;
-                ballBound.Y += ball.Velocity.Y * _ballSpeed * delta;
-                break;
+                Vector2 intersectionDepth = ballBound.GetIntersectionDepth(ref collidingPadBound);
+                ballBound.Position += intersectionDepth;
+                ball.Bounds = ballBound;
             }
 
-            if (MathF.Abs(ball.Velocity.Y) > MathF.Abs(ball.Velocity.X))
-                ball.Velocity = new Vector3(ball.Velocity.Y * MathF.Sign(ball.Velocity.X), MathF.Sign(ball.Velocity.X) * MathF.Sign(ball.Velocity.Y), 0);
-            ball.Bounds = ballBound;
+            // Resolve ball collision.
+            var velocity2d = new Vector2(ball.Velocity.X, ball.Velocity.Y);
+            Vector2 movement = velocity2d * _ballSpeed * delta;
+            _collisionSystem.Me = ball;
+            Collision.CollisionResult<NetworkTransform> collisionResult = Collision.IncrementalGenericSegmentCollision(movement, ballBound, _collisionSystem);
+            ball.X += collisionResult.UnobstructedMovement.X;
+            ball.Y += collisionResult.UnobstructedMovement.Y;
+            if (collisionResult.Collided)
+            {
+                Vector2 normal = collisionResult.CollidedSurfaceNormal;
+                ball.Velocity = Vector2.Reflect(velocity2d, normal).ToVec3(); // (2 * Vector2.Dot(velocity2d, normal) * normal - velocity2d) * -1;
+                if (collisionResult.Entity is PongPaddle) _ballSpeed = MathF.Min(_ballSpeed + 0.05f, 0.8f);
+            }
 
             // Check if anyone has scored.
             var restart = false;
@@ -286,6 +239,13 @@ namespace PongTest.Game
 
             composer.RenderSprite(_pad1.VisualPosition, _pad1.Size, _pad1.Ready ? Color.White : Color.Red);
             composer.RenderSprite(_pad2.VisualPosition, _pad2.Size, _pad2.Ready ? Color.White : Color.Red);
+
+            // Uncomment to view paddle collisions.
+            //LineSegment[] padCol = _pad2.GetPaddleCollision();
+            //for (var i = 0; i < padCol.Length; i++)
+            //{
+            //    composer.RenderLine(ref padCol[i], Color.Red);
+            //}
 
             NetworkTransform ball = IdToObject["Ball"];
             composer.RenderSprite(ball.VisualPosition, ball.Size, Color.White);

@@ -30,11 +30,11 @@ namespace PongTest.Game
             _collision[0] = new LineSegment(new Vector2(X, Y), new Vector2(X, Y + Height));
             _collision[1] = new LineSegment(new Vector2(X + Width, Y), new Vector2(X + Width, Y + Height));
 
-            _collision[2] = new LineSegment(new Vector2(X + 10, Y), new Vector2(X, Y - 10));
-            _collision[3] = new LineSegment(new Vector2(X + Width - 10, Y), new Vector2(X + Width, Y - 10));
+            _collision[2] = new LineSegment(new Vector2(X, Y), new Vector2(X + 5, Y - 10));
+            _collision[3] = new LineSegment(new Vector2(X + Width, Y), new Vector2(X + Width - 5, Y - 10));
 
-            _collision[4] = new LineSegment(new Vector2(X + 10, Y + Height), new Vector2(X, Y + Height + 10));
-            _collision[5] = new LineSegment(new Vector2(X + Width - 10, Y + Height), new Vector2(X + Width, Y + Height + 10));
+            _collision[4] = new LineSegment(new Vector2(X, Y + Height), new Vector2(X + 5, Y + Height + 10));
+            _collision[5] = new LineSegment(new Vector2(X + Width, Y + Height), new Vector2(X + Width - 5, Y + Height + 10));
 
             return _collision;
         }

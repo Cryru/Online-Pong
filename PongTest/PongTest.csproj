@@ -21,7 +21,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Emotion" Version="1.0.432" />
+    <PackageReference Include="Emotion" Version="1.0.435" />
   </ItemGroup>
 
   <ItemGroup>
