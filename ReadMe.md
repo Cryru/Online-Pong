@@ -3,6 +3,8 @@
 My friend wanted to play Pong but we couldn't find a working version online so I decided to try to create one. I didn't manage to complete it
 in the same evening, but 4 hours later (over the course of 3 days) my self-imposed gamejam speedrun was complete.
 
+All commits after the initial commit are done the initial development.
+
 # Requirements
 
 For hardware requirements check www.github.com/Cryru/Emotion

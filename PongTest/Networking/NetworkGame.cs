@@ -1,6 +1,7 @@
 ﻿#region Using
 
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Threading.Tasks;
 using Emotion.Common;
@@ -38,7 +39,9 @@ namespace PongTest.Networking
                 tasks = new Task[Players.Count];
                 for (var i = 0; i < Players.Count; i++)
                 {
-                    tasks[i] = Network.GenericSendMessage(Players[i].Socket, msg);
+                    NetworkPlayer p = Players[i];
+                    if (p.Socket == null) continue;
+                    tasks[i] = Network.GenericSendMessage(p.Socket, msg);
                 }
             }
 
@@ -140,13 +143,16 @@ namespace PongTest.Networking
             int msBetweenTicks = 1000 / tickRate;
             float sceneUpdateTimes = msBetweenTicks / Engine.DeltaTime;
             float gameTime = 0;
+            var tickSleep = Stopwatch.StartNew();
             while (State == GameState.Running)
             {
                 Task<NetworkMessage[]> tickRequest = SendToEveryoneAndAwaitReplies(new NetworkMessage
                 {
                     MessageType = MessageType.RequestTick
                 });
-                await Task.Delay(msBetweenTicks);
+
+                while (tickSleep.ElapsedMilliseconds < msBetweenTicks) { }
+                tickSleep.Restart();
 
                 NetworkMessage[] tickResponses = await tickRequest;
                 for (var i = 0; i < tickResponses.Length; i++)
@@ -161,6 +167,7 @@ namespace PongTest.Networking
                 {
                     scene.UpdateServer(Engine.DeltaTime, deltaState);
                 }
+
                 gameTime += msBetweenTicks;
                 await using var str = new MemoryStream();
                 scene.WriteSceneToStream(str, false, deltaState, gameTime);

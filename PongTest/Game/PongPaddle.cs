@@ -2,6 +2,7 @@
 
 using System.IO;
 using System.Numerics;
+using Emotion.Common;
 using Emotion.Primitives;
 using PongTest.NetGame;
 
@@ -24,19 +25,34 @@ namespace PongTest.Game
 
         }
 
-        private LineSegment[] _collision = new LineSegment[6];
+        private static float _incline = 20;
+        private LineSegment[] _collision = new LineSegment[3];
         public LineSegment[] GetPaddleCollision()
         {
-            _collision[0] = new LineSegment(new Vector2(X, Y), new Vector2(X, Y + Height));
-            _collision[1] = new LineSegment(new Vector2(X + Width, Y), new Vector2(X + Width, Y + Height));
+            bool leftPaddle = X < Engine.Configuration.RenderSize.X / 2;
 
-            _collision[2] = new LineSegment(new Vector2(X, Y), new Vector2(X + 5, Y - 10));
-            _collision[3] = new LineSegment(new Vector2(X + Width, Y), new Vector2(X + Width - 5, Y - 10));
-
-            _collision[4] = new LineSegment(new Vector2(X, Y + Height), new Vector2(X + 5, Y + Height + 10));
-            _collision[5] = new LineSegment(new Vector2(X + Width, Y + Height), new Vector2(X + Width - 5, Y + Height + 10));
+            if (leftPaddle)
+            {
+                _collision[0] = new LineSegment(new Vector2(X + Width, Y + _incline), new Vector2(X + Width, Y + Height - _incline));
+                _collision[1] = new LineSegment(new Vector2(X + Width - _incline / 2, Y), new Vector2(X + Width, Y + _incline));
+                _collision[2] = new LineSegment(new Vector2(X + Width - _incline / 2, Y + Height), new Vector2(X + Width, Y + Height - _incline));
+            }
+            else
+            {
+                _collision[0] = new LineSegment(new Vector2(X, Y + _incline), new Vector2(X, Y + Height - _incline));
+                _collision[1] = new LineSegment(new Vector2(X + _incline / 2, Y), new Vector2(X, Y + _incline));
+                _collision[2] = new LineSegment(new Vector2(X + _incline / 2, Y + Height), new Vector2(X, Y + Height - _incline));
+            }
 
             return _collision;
+        }
+
+        public Rectangle GetPaddleBound()
+        {
+            Rectangle b = Bounds;
+            b.Y += _incline;
+            b.Height -= _incline * 2;
+            return b;
         }
 
         public override int GetDataLength()

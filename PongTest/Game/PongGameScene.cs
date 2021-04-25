@@ -2,6 +2,7 @@
 
 using System;
 using System.Numerics;
+using Emotion.Audio;
 using Emotion.Common;
 using Emotion.Game;
 using Emotion.Game.Text;
@@ -50,7 +51,6 @@ namespace PongTest.Game
                 Position = _pad1StartingPos,
                 Size = defaultPaddleSize,
                 Owner = new NetworkPlayerHandle(p1?.Id),
-                Ready = true,
             };
             AddObject(_pad1);
 
@@ -60,7 +60,6 @@ namespace PongTest.Game
                 Position = _pad2StartingPos,
                 Size = defaultPaddleSize,
                 Owner = new NetworkPlayerHandle(p2?.Id),
-                Ready = true
             };
             AddObject(_pad2);
 
@@ -95,7 +94,7 @@ namespace PongTest.Game
 
         private bool _p1Turn = true;
         private After _betweenMatchTimer;
-        private float _ballSpeed = 0.25f;
+        private float _ballSpeed = 0.3f;
 
         public override void PreServerUpdate(NetSceneDeltaState deltaState)
         {
@@ -133,8 +132,8 @@ namespace PongTest.Game
             // we have to manually snap the ball towards the smaller overlap.
             Rectangle ballBound = ball.Bounds;
             var collidingPadBound = new Rectangle(0, 0, 0, 0);
-            Rectangle pad1Bound = _pad1.Bounds;
-            Rectangle pad2Bound = _pad2.Bounds;
+            Rectangle pad1Bound = _pad1.GetPaddleBound();
+            Rectangle pad2Bound = _pad2.GetPaddleBound();
             if (ballBound.Intersects(pad1Bound))
                 collidingPadBound = pad1Bound;
             else if (ballBound.Intersects(pad2Bound)) collidingPadBound = pad2Bound;
@@ -150,18 +149,30 @@ namespace PongTest.Game
             Vector2 movement = velocity2d * _ballSpeed * delta;
             _collisionSystem.Me = ball;
             Collision.CollisionResult<NetworkTransform> collisionResult = Collision.IncrementalGenericSegmentCollision(movement, ballBound, _collisionSystem);
-            ball.X += collisionResult.UnobstructedMovement.X;
-            ball.Y += collisionResult.UnobstructedMovement.Y;
+            Vector2 movementAllowed = collisionResult.UnobstructedMovement;
             if (collisionResult.Collided)
             {
                 Vector2 normal = collisionResult.CollidedSurfaceNormal;
                 ball.Velocity = Vector2.Reflect(velocity2d, normal).ToVec3(); // (2 * Vector2.Dot(velocity2d, normal) * normal - velocity2d) * -1;
-                if (collisionResult.Entity is PongPaddle) _ballSpeed = MathF.Min(_ballSpeed + 0.05f, 0.8f);
+                _ballSpeed = MathF.Min(_ballSpeed + 0.05f, 0.8f);
+                if (collisionResult.UnobstructedMovement == Vector2.Zero) movementAllowed = ball.Velocity.ToVec2() * _ballSpeed * delta;
+            }
+
+            ball.X += movementAllowed.X;
+            ball.Y += movementAllowed.Y;
+
+            // Velocity and position corrections.
+            if (ball.Y < 10) ball.Position = _ballStartingPos;
+            if (ball.Y + ball.Height > Engine.Configuration.RenderSize.Y) ball.Position = _ballStartingPos;
+            if (MathF.Abs(ball.Velocity.X) < 0.5f)
+            {
+                ball.Velocity.X = 0.5f * MathF.Sign(ball.Velocity.X);
+                ball.Velocity = Vector3.Normalize(ball.Velocity);
             }
 
             // Check if anyone has scored.
             var restart = false;
-            if (ball.X < 0)
+            if (ball.X + ball.Width < 0)
             {
                 _pad2.Score++;
                 restart = true;
@@ -181,7 +192,7 @@ namespace PongTest.Game
                 ball.Position = _ballStartingPos;
                 ball.Velocity = Vector3.Zero;
                 _betweenMatchTimer.Restart();
-                _ballSpeed = 0.2f;
+                _ballSpeed = 0.3f;
 
                 // Force update all objects, because they teleported.
                 deltaState[_pad1] = NetworkTransformReadOperation.UpdateForce;
@@ -194,6 +205,7 @@ namespace PongTest.Game
         private FontAsset _font;
         private PongPaddle _pad1;
         private PongPaddle _pad2;
+        private AudioAsset _soundtrack;
 
         public override void Load()
         {
@@ -203,6 +215,15 @@ namespace PongTest.Game
             _myPaddle = _pad1.Owner == NetworkHandle ? _pad1 : _pad2;
             _font = Engine.AssetLoader.Get<FontAsset>("calibrib.ttf");
             Engine.Renderer.Camera = new TrueScaleCamera((Engine.Configuration.RenderSize / 2.0f).ToVec3());
+
+            _soundtrack = Engine.AssetLoader.Get<AudioAsset>("soundtrack.wav");
+            if (_soundtrack != null)
+            {
+                Engine.Audio.CreateLayer("BGM", 0.3f);
+                AudioLayer audioLayer = Engine.Audio.GetLayer("BGM");
+                audioLayer.AddToQueue(_soundtrack);
+                audioLayer.LoopingCurrent = true;
+            }
         }
 
         public override void Update()
